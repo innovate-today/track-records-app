@@ -2,9 +2,13 @@
    Track & XC Records App
    FINAL CLEAN VERSION
    - Medals for Top 3
-   - Freeze header row
+   - Freeze header row (CSS sticky th)
    - All Years vs By Year toggle
-   - Blank marks hidden
+   - Blank rows hidden
+   - Sorting:
+       Running events ASC (fastest first)
+       Field events DESC (farthest/highest first)
+   - Field events detection includes full names + abbreviations
    - Mobile: tap relay row to expand details
 ============================= */
 
@@ -13,6 +17,52 @@ const CONFIG = window.CONFIG;
 const elContent = document.getElementById("content");
 const elLastUpdated = document.getElementById("lastUpdated");
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
+
+/* -----------------------------
+   Event type rules
+------------------------------ */
+// Match full names + common variants (contains match)
+const FIELD_KEYWORDS = [
+  "shot put", "shot",
+  "discus", "discus throw",
+  "long jump",
+  "triple jump",
+  "high jump",
+  "pole vault"
+];
+
+// Match exact abbreviations (token match)
+const FIELD_ABBREVIATIONS = new Set([
+  "sp", "dt", "lj", "tj", "hj", "pv"
+]);
+
+function normalizeEventName(eventName) {
+  return String(eventName || "")
+    .toLowerCase()
+    .replaceAll("–", "-")
+    .replaceAll("—", "-")
+    .replaceAll("/", " ")
+    .replaceAll(".", " ")
+    .replaceAll(",", " ")
+    .replaceAll("(", " ")
+    .replaceAll(")", " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isFieldEvent(eventName) {
+  const s = normalizeEventName(eventName);
+  if (!s) return false;
+
+  // token-based check for abbreviations (e.g., "HJ", "PV", "Boys HJ")
+  const tokens = s.split(" ").filter(Boolean);
+  for (const t of tokens) {
+    if (FIELD_ABBREVIATIONS.has(t)) return true;
+  }
+
+  // contains-based check for full names/variants
+  return FIELD_KEYWORDS.some(k => s === k || s.includes(k));
+}
 
 /* -----------------------------
    Column mapping
@@ -86,10 +136,8 @@ function parseMarkValue(v) {
   const s = String(v || "").trim();
   if (!s) return null;
 
-  // numeric
   if (!isNaN(Number(s))) return Number(s);
 
-  // mm:ss or hh:mm:ss -> seconds
   const p = s.split(":").map(x => Number(String(x).trim()));
   if (p.length === 2 && p.every(n => Number.isFinite(n))) return p[0] * 60 + p[1];
   if (p.length === 3 && p.every(n => Number.isFinite(n))) return p[0] * 3600 + p[1] * 60 + p[2];
@@ -97,9 +145,6 @@ function parseMarkValue(v) {
   return null;
 }
 
-/* -----------------------------
-   CSV parsing (quote-safe)
------------------------------- */
 function parseCSV(text) {
   const rows = [];
   let row = [];
@@ -174,7 +219,7 @@ function medalForRank(rank) {
 }
 
 /* -----------------------------
-   Modal (for relay expand on mobile)
+   Modal (relay expand on mobile)
 ------------------------------ */
 function ensureModal() {
   let m = document.getElementById("rowModal");
@@ -222,8 +267,8 @@ const state = {
   event: "",
   topN: 25,
   search: "",
-  yearMode: "all",      // "all" | "year"
-  yearPick: "ALL",      // "ALL" or specific year string
+  yearMode: "all",
+  yearPick: "ALL",
   data: { competition: [], training: [], xc: [] }
 };
 
@@ -307,7 +352,6 @@ function render() {
 
   renderShell();
 
-  // Tabs
   document.querySelectorAll("nav button[data-view]").forEach(b => {
     b.classList.toggle("active", b.dataset.view === state.view);
     b.onclick = () => {
@@ -320,11 +364,9 @@ function render() {
     };
   });
 
-  // Event label
   const eventLabel = document.getElementById("eventLabel");
   eventLabel.textContent = state.view === "training" ? "Metric" : (state.view === "xc" ? "Distance" : "Event");
 
-  // Events
   const events = uniqueSorted(rows.map(r => r[cols.event]));
   if (!state.event) state.event = events[0] || "";
 
@@ -332,21 +374,17 @@ function render() {
   eventSelect.innerHTML = events.map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join("");
   eventSelect.value = state.event;
 
-  // Gender buttons
   const boysBtn = document.getElementById("boysBtn");
   const girlsBtn = document.getElementById("girlsBtn");
   boysBtn.classList.toggle("active", state.gender === "Boys");
   girlsBtn.classList.toggle("active", state.gender === "Girls");
 
-  // Top
   const topSelect = document.getElementById("topSelect");
   topSelect.value = String(state.topN);
 
-  // Search
   const searchInput = document.getElementById("searchInput");
   searchInput.value = state.search;
 
-  // Year mode + year pick
   const yearModeSelect = document.getElementById("yearModeSelect");
   const yearPickWrap = document.getElementById("yearPickWrap");
   const yearPickSelect = document.getElementById("yearPickSelect");
@@ -354,15 +392,13 @@ function render() {
   yearModeSelect.value = state.yearMode;
   yearPickWrap.style.display = state.yearMode === "year" ? "" : "none";
 
-  const years = uniqueSorted(rows.map(r => r[cols.year])).sort((a, b) => b.localeCompare(a)); // newest first
+  const years = uniqueSorted(rows.map(r => r[cols.year])).sort((a, b) => b.localeCompare(a));
   yearPickSelect.innerHTML =
     [`<option value="ALL">All Years</option>`]
       .concat(years.map(y => `<option value="${escapeHtml(y)}">${escapeHtml(y)}</option>`))
       .join("");
-
   yearPickSelect.value = state.yearPick;
 
-  // Handlers
   eventSelect.onchange = (e) => { state.event = e.target.value; renderResults(); };
   topSelect.onchange = (e) => { state.topN = Number(e.target.value); renderResults(); };
   searchInput.oninput = (e) => { state.search = e.target.value; renderResults(); };
@@ -375,11 +411,7 @@ function render() {
     if (state.yearMode !== "year") state.yearPick = "ALL";
     render();
   };
-
-  yearPickSelect.onchange = (e) => {
-    state.yearPick = e.target.value;
-    renderResults();
-  };
+  yearPickSelect.onchange = (e) => { state.yearPick = e.target.value; renderResults(); };
 
   elLastUpdated.textContent = `Loaded ${new Date().toLocaleString()}`;
   renderResults();
@@ -392,6 +424,7 @@ function renderResults() {
   const mobile = isMobile();
 
   const search = state.search.toLowerCase().trim();
+  const fieldSort = isFieldEvent(state.event);
 
   const filtered = rows
     .filter(r => String(r[cols.event] || "").trim() === String(state.event || "").trim())
@@ -415,13 +448,12 @@ function renderResults() {
       const v = parseMarkValue(r[cols.markValue]) ?? parseMarkValue(disp);
       return { r, v, disp };
     })
-    .filter(x => x.v !== null) // hide blanks
-    .sort((a, b) => a.v - b.v)
+    .filter(x => x.v !== null)
+    .sort((a, b) => fieldSort ? (b.v - a.v) : (a.v - b.v))
     .slice(0, state.topN);
 
   const resEl = document.getElementById("resultsCard");
 
-  // Headers
   let headers = [];
   if (view === "competition") {
     headers = mobile
@@ -451,12 +483,8 @@ function renderResults() {
         <div class="kv"><div class="k">Athlete 2</div><div class="v">${escapeHtml(a2)} ${g2 ? `(${escapeHtml(g2)})` : ""}</div></div>
         <div class="kv"><div class="k">Athlete 3</div><div class="v">${escapeHtml(a3)} ${g3 ? `(${escapeHtml(g3)})` : ""}</div></div>
         <div class="kv"><div class="k">Athlete 4</div><div class="v">${escapeHtml(a4)} ${g4 ? `(${escapeHtml(g4)})` : ""}</div></div>
-        ${r[cols.meet] ? `<hr class="sep" /><div class="kv"><div class="k">Meet</div><div class="v">${escapeHtml(r[cols.meet])}</div></div>` : ""}
-        ${r[cols.date] ? `<div class="kv"><div class="k">Date</div><div class="v">${escapeHtml(r[cols.date])}</div></div>` : ""}
-        ${r[cols.notes] ? `<div class="kv"><div class="k">Notes</div><div class="v">${escapeHtml(r[cols.notes])}</div></div>` : ""}
       `;
 
-      // stash body in a data attribute (escaped)
       const encoded = escapeHtml(modalBody);
 
       return `
@@ -499,10 +527,12 @@ function renderResults() {
     ? `${escapeHtml(state.yearPick)}`
     : `All Years`;
 
+  const sortLabel = fieldSort ? "Best = Highest" : "Best = Fastest";
+
   resEl.innerHTML = `
     <div class="summaryRow">
       <div><b>${escapeHtml(state.gender)} • ${escapeHtml(state.event)} • ${viewLabel}</b></div>
-      <div class="muted">Showing ${filtered.length}</div>
+      <div class="muted">${sortLabel} • Showing ${filtered.length}</div>
     </div>
 
     <div class="tableWrap">
@@ -517,14 +547,12 @@ function renderResults() {
     </div>
   `;
 
-  // Mobile: tap-to-expand relay details
   if (mobile && view === "competition") {
     document.querySelectorAll("tr.taprow").forEach(tr => {
       tr.addEventListener("click", () => {
         const title = tr.getAttribute("data-title") || "";
         const bodyEsc = tr.getAttribute("data-body") || "";
 
-        // unescape
         const tmp = document.createElement("textarea");
         tmp.innerHTML = bodyEsc;
         const bodyHtml = tmp.value;
@@ -536,7 +564,7 @@ function renderResults() {
 }
 
 /* -----------------------------
-   Boot + PWA registration
+   Boot + PWA
 ------------------------------ */
 async function boot() {
   await Promise.all([ensureLoaded("competition"), ensureLoaded("training"), ensureLoaded("xc")]);
