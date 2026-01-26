@@ -1,16 +1,15 @@
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const CACHE_NAME = `records-cache-${CACHE_VERSION}`;
 
-// App shell (everything needed to load UI offline)
 const APP_SHELL = [
-  "/",
-  "/index.html",
-  "/styles.css",
-  "/app.js",
-  "/config.js",
-  "/manifest.webmanifest",
-  "/icons/icon-192.png",
-  "/icons/icon-512.png"
+  "./",
+  "./index.html",
+  "./styles.css",
+  "./app.js",
+  "./config.js",
+  "./manifest.webmanifest",
+  "./icons/icon-192.png",
+  "./icons/icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
@@ -35,7 +34,6 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
 
-  // CSVs from Google Sheets: network-first, fallback to cache (offline)
   if (url.search.includes("output=csv")) {
     event.respondWith(
       fetch(req)
@@ -49,7 +47,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // App shell/static: cache-first
   event.respondWith(
     caches.match(req).then((cached) => cached || fetch(req))
   );
