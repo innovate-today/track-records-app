@@ -1,0 +1,202 @@
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #0b1a2a;
+  color: white;
+}
+
+.hidden {
+  display: none;
+}
+
+.gate {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+input, button {
+  padding: 12px;
+  font-size: 16px;
+  margin: 8px;
+}
+
+/* =========================
+   Mobile formatting
+========================= */
+@media (max-width: 768px) {
+  nav {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  nav button {
+    flex: 1;
+    padding: 12px;
+    font-size: 16px;
+  }
+
+  .card {
+    padding: 12px;
+  }
+
+  select, input, button {
+    font-size: 16px;
+    padding: 12px;
+  }
+
+  table {
+    font-size: 14px;
+  }
+
+  th, td {
+    padding: 8px;
+  }
+
+  header h1 {
+    font-size: 22px;
+  }
+
+  header p {
+    font-size: 13px;
+  }
+}
+
+/* iPhone safe-area */
+body {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* =========================
+   Tap row modal
+========================= */
+.modal.hidden { display: none; }
+.modal { position: fixed; inset: 0; z-index: 9999; }
+
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.55);
+}
+
+.modal-card {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(92vw, 520px);
+  max-height: 80vh;
+  overflow: auto;
+  background: #0f2a44;
+  border: 1px solid rgba(255,255,255,.15);
+  border-radius: 16px;
+  box-shadow: 0 16px 50px rgba(0,0,0,.45);
+  padding: 14px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.modal-title {
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.modal-close {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.2);
+  background: #1e3a5f;
+  color: #fff;
+  cursor: pointer;
+}
+
+.kv {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.kv .k { opacity: .75; font-size: 12px; }
+.kv .v { font-size: 14px; }
+
+.sep {
+  border: none;
+  border-top: 1px solid rgba(255,255,255,.15);
+  margin: 10px 0;
+}
+
+/* Make tap rows feel tappable */
+tr.taprow { cursor: pointer; }
+tr.taprow:hover { background: rgba(255,255,255,.05); }
+
+
+/* ---------- layout helpers ---------- */
+.card { background: rgba(255,255,255,.03); padding: 14px; border-radius: 14px; margin: 14px 0; }
+.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
+.label { font-size: 12px; opacity:.8; margin-bottom:6px; }
+.searchWrap { flex: 1; min-width: 220px; }
+.searchWrap input, select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.15); background: rgba(0,0,0,.15); color: #fff; }
+.genderBtns button { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.2); background: #1e3a5f; color:#fff; cursor:pointer; }
+.genderBtns button.active { background: #2b5a8a; }
+.tip { margin-top:10px; font-size:12px; opacity:.75; }
+.summaryRow { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
+.muted { opacity:.75; }
+.tableWrap { overflow:auto; margin-top:10px; }
+.tbl { width:100%; border-collapse:collapse; }
+.tbl th, .tbl td { padding:10px; border-bottom: 1px solid rgba(255,255,255,.12); white-space:nowrap; text-align:left; }
+tr.taprow { cursor:pointer; }
+tr.taprow:hover { background: rgba(255,255,255,.05); }
+
+/* ---------- modal ---------- */
+.modal.hidden { display: none; }
+.modal { position: fixed; inset: 0; z-index: 9999; }
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); }
+.modal-card {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(92vw, 520px); max-height: 80vh; overflow: auto;
+  background: #0f2a44; border: 1px solid rgba(255,255,255,.15);
+  border-radius: 16px; box-shadow: 0 16px 50px rgba(0,0,0,.45);
+  padding: 14px;
+}
+.modal-header { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:10px; }
+.modal-title { font-weight:700; font-size:16px; }
+.modal-close {
+  padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.2);
+  background: #1e3a5f; color:#fff; cursor:pointer;
+}
+.kv { display:grid; grid-template-columns: 110px 1fr; gap:10px; padding: 6px 0; }
+.kv .k { opacity:.75; font-size:12px; }
+.kv .v { font-size:14px; }
+.sep { border:none; border-top: 1px solid rgba(255,255,255,.15); margin:10px 0; }
+
+
+/* Rounded top tabs */
+nav {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+nav button[data-view]{
+  border-radius: 16px;
+  padding: 14px 18px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+nav button[data-view]:hover{
+  background: rgba(255,255,255,.10);
+}
+

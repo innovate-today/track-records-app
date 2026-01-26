@@ -1,0 +1,600 @@
+x
+const CONFIG = window.CONFIG;
+
+const elContent = document.getElementById("content");
+const elLastUpdated = document.getElementById("lastUpdated");
+
+const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
+
+/* -----------------------------
+   Explicit column mapping
+------------------------------ */
+function colsFor(view) {
+  if (view === "competition") {
+    return {
+      event: "Event",
+      gender: "category",
+      year: "year",
+      a1: "athlete_1",
+      a2: "athlete_2",
+      a3: "athlete_3",
+      a4: "athlete_4",
+      g1: "grade_1",
+      g2: "grade_2",
+      g3: "grade_3",
+      g4: "grade_4",
+      markDisplay: "mark_display",
+      markValue: "mark_value",
+      meet: "meet",
+      date: "date",
+      notes: "notes"
+    };
+  }
+  if (view === "training") {
+    return {
+      event: "metric",
+      gender: "category",
+      year: "year",
+      name: "athlete",
+      grade: "grade",
+      markDisplay: "mark_display",
+      markValue: "mark_value",
+      date: "date",
+      notes: "notes"
+    };
+  }
+  if (view === "xc") {
+    return {
+      event: "distance",
+      gender: "category",
+      year: "year",
+      name: "athlete",
+      grade: "grade",
+      markDisplay: "mark_display",
+      markValue: "mark_value",
+      meet: "meet",
+      course: "course",
+      date: "date"
+    };
+  }
+  return {};
+}
+
+/* -----------------------------
+   CSV parsing (handles quotes)
+------------------------------ */
+function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    const next = text[i + 1];
+
+    if (ch === '"' && inQuotes && next === '"') { cur += '"'; i++; continue; }
+    if (ch === '"') { inQuotes = !inQuotes; continue; }
+
+    if (ch === "," && !inQuotes) { row.push(cur); cur = ""; continue; }
+
+    if ((ch === "\n" || ch === "\r") && !inQuotes) {
+      if (ch === "\r" && next === "\n") i++;
+      row.push(cur); cur = "";
+      if (row.length > 1 || row[0] !== "") rows.push(row);
+      row = [];
+      continue;
+    }
+    cur += ch;
+  }
+
+  if (cur.length > 0 || row.length > 0) {
+    row.push(cur);
+    if (row.length > 1 || row[0] !== "") rows.push(row);
+  }
+
+  return rows;
+}
+
+function rowsToObjects(rows) {
+  if (!rows || rows.length < 2) return [];
+  const headers = rows[0].map(h => (h || "").trim());
+  return rows.slice(1)
+    .filter(r => r.some(c => (c || "").trim() !== ""))
+    .map(r => {
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = (r[i] ?? "").trim());
+      return obj;
+    });
+}
+
+/* -----------------------------
+   Helpers
+------------------------------ */
+function escapeHtml(s) {
+  return String(s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function normalizeGender(g) {
+  const s = String(g || "").toLowerCase().trim();
+  if (s.startsWith("boy") || s === "m" || s.includes("male")) return "Boys";
+  if (s.startsWith("girl") || s === "f" || s.includes("female")) return "Girls";
+  return "";
+}
+
+function isTimeEvent(eventName, view) {
+  if (view === "training" || view === "xc") return true;
+  const e = String(eventName || "").toLowerCase();
+  const fieldHints = ["jump", "vault", "shot", "discus", "javelin", "throw", "long", "triple", "high", "pole"];
+  if (fieldHints.some(h => e.includes(h))) return false;
+  return true;
+}
+
+function parseMarkValue(v) {
+  const s = String(v || "").trim();
+  if (!s) return null;
+
+  const n = Number(s);
+  if (Number.isFinite(n)) return n;
+
+  const parts = s.split(":").map(p => p.trim());
+  if (parts.length >= 2 && parts.every(p => p !== "" && !Number.isNaN(Number(p)))) {
+    const last = Number(parts[parts.length - 1]);
+    if (!Number.isFinite(last)) return null;
+
+    if (parts.length === 2) return Number(parts[0]) * 60 + last;
+    if (parts.length === 3) return Number(parts[0]) * 3600 + Number(parts[1]) * 60 + last;
+  }
+  return null;
+}
+
+async function fetchCSV(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+  return await res.text();
+}
+
+/* -----------------------------
+   Modal (tap row to expand)
+------------------------------ */
+function ensureModal() {
+  let modal = document.getElementById("rowModal");
+  if (modal) return modal;
+
+  modal = document.createElement("div");
+  modal.id = "rowModal";
+  modal.className = "modal hidden";
+  modal.innerHTML = `
+    <div class="modal-backdrop" id="modalBackdrop"></div>
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <div class="modal-header">
+        <div id="modalTitle" class="modal-title"></div>
+        <button id="modalClose" class="modal-close">Close</button>
+      </div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const close = () => modal.classList.add("hidden");
+  modal.querySelector("#modalClose").addEventListener("click", close);
+  modal.querySelector("#modalBackdrop").addEventListener("click", close);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !modal.classList.contains("hidden")) close();
+  });
+
+  return modal;
+}
+
+function openModal(title, htmlBody) {
+  const modal = ensureModal();
+  modal.querySelector("#modalTitle").innerHTML = escapeHtml(title);
+  modal.querySelector("#modalBody").innerHTML = htmlBody;
+  modal.classList.remove("hidden");
+}
+
+/* -----------------------------
+   State
+------------------------------ */
+const state = {
+  view: "competition",
+  gender: "Boys",
+  topN: 25,
+  search: "",
+  event: "",
+  data: { competition: [], training: [], xc: [] }
+};
+
+/* -----------------------------
+   Load
+------------------------------ */
+async function ensureLoaded(view) {
+  if (state.data[view]?.length) return;
+
+  const url = CONFIG?.CSV_URLS?.[view];
+  if (!url) throw new Error(`Missing CSV_URLS.${view} in config.js`);
+
+  const text = await fetchCSV(url);
+  state.data[view] = rowsToObjects(parseCSV(text));
+}
+
+function getCols() {
+  return colsFor(state.view);
+}
+
+function uniqueEvents(rows, cols) {
+  const set = new Set();
+  rows.forEach(r => {
+    const e = String(r[cols.event] || "").trim();
+    if (e) set.add(e);
+  });
+  return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+/* -----------------------------
+   Render
+------------------------------ */
+function render() {
+  const rows = state.data[state.view] || [];
+  const cols = getCols();
+  const events = uniqueEvents(rows, cols);
+
+  if (!state.event) state.event = events[0] || "";
+
+  elContent.innerHTML = `
+    <div class="card">
+      <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:end;">
+        <div>
+          <div style="font-size:12px; opacity:.8;">${state.view === "training" ? "Metric" : state.view === "xc" ? "Distance" : "Event"}</div>
+          <select id="eventSelect" style="padding:10px; min-width:240px;"></select>
+        </div>
+
+        <div>
+          <div style="font-size:12px; opacity:.8;">Gender</div>
+          <div style="display:flex; gap:8px;">
+            <button id="boysBtn" class="pill">Boys</button>
+            <button id="girlsBtn" class="pill">Girls</button>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:12px; opacity:.8;">Top</div>
+          <select id="topSelect" style="padding:10px; min-width:110px;">
+            <option>10</option>
+            <option selected>25</option>
+            <option>50</option>
+            <option>100</option>
+          </select>
+        </div>
+
+        <div style="flex:1; min-width:220px;">
+          <div style="font-size:12px; opacity:.8;">Search name</div>
+          <input id="searchInput" placeholder="Type a name…" style="width:100%; padding:10px;" />
+        </div>
+      </div>
+
+      ${isMobile() ? `<div style="margin-top:8px; font-size:12px; opacity:.75;">Tip: tap a row to see full details.</div>` : ``}
+    </div>
+
+    <div class="card" id="resultsCard"></div>
+  `;
+
+  const eventSelect = document.getElementById("eventSelect");
+  eventSelect.innerHTML = events.map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join("");
+  eventSelect.value = state.event || (events[0] || "");
+
+  const boysBtn = document.getElementById("boysBtn");
+  const girlsBtn = document.getElementById("girlsBtn");
+  setPillActive(boysBtn, state.gender === "Boys");
+  setPillActive(girlsBtn, state.gender === "Girls");
+
+  const topSelect = document.getElementById("topSelect");
+  topSelect.value = String(state.topN);
+
+  const searchInput = document.getElementById("searchInput");
+  searchInput.value = state.search;
+
+  eventSelect.addEventListener("change", () => { state.event = eventSelect.value; renderResults(); });
+  boysBtn.addEventListener("click", () => { state.gender = "Boys"; render(); });
+  girlsBtn.addEventListener("click", () => { state.gender = "Girls"; render(); });
+  topSelect.addEventListener("change", () => { state.topN = Number(topSelect.value); renderResults(); });
+  searchInput.addEventListener("input", () => { state.search = searchInput.value; renderResults(); });
+
+  renderResults();
+}
+
+function setPillActive(btn, active) {
+  btn.style.border = "1px solid rgba(255,255,255,.25)";
+  btn.style.background = active ? "#2b5a8a" : "#1e3a5f";
+  btn.style.color = "#fff";
+  btn.style.padding = "10px 14px";
+  btn.style.borderRadius = "999px";
+}
+
+function renderResults() {
+  const rows = state.data[state.view] || [];
+  const cols = getCols();
+  const resEl = document.getElementById("resultsCard");
+
+  if (!rows.length) {
+    resEl.innerHTML = `<b>No data found</b>`;
+    return;
+  }
+
+  const eventName = state.event || "";
+  const timeEvent = isTimeEvent(eventName, state.view);
+
+  const filtered = rows
+    .filter(r => {
+      if (eventName && String(r[cols.event] || "").trim() !== eventName) return false;
+
+      const g = normalizeGender(r[cols.gender]);
+      if (g && g !== state.gender) return false;
+
+      const search = state.search.toLowerCase().trim();
+      if (search) {
+        if (state.view === "competition") {
+          const names = [
+            String(r[cols.a1] || "").toLowerCase(),
+            String(r[cols.a2] || "").toLowerCase(),
+            String(r[cols.a3] || "").toLowerCase(),
+            String(r[cols.a4] || "").toLowerCase()
+          ];
+          if (!names.some(n => n.includes(search))) return false;
+        } else {
+          const n = String(r[cols.name] || "").toLowerCase();
+          if (!n.includes(search)) return false;
+        }
+      }
+      return true;
+    })
+    .map(r => {
+      const display = String(r[cols.markDisplay] || "").trim();
+      const mvRaw = String(r[cols.markValue] || "").trim();
+      const value = parseMarkValue(mvRaw) ?? parseMarkValue(display) ?? null;
+      return { raw: r, value, display: display || mvRaw };
+    });
+
+  filtered.sort((a, b) => {
+    const av = a.value, bv = b.value;
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;
+    if (bv == null) return -1;
+    return timeEvent ? av - bv : bv - av;
+  });
+
+  const top = filtered.slice(0, state.topN);
+
+  const mobile = isMobile();
+
+  // headers
+  let headerCols = [];
+  if (state.view === "competition") {
+    headerCols = mobile
+      ? ["Rank", "Year", "Athlete", "Gr", "Mark"]
+      : ["Rank", "Year", "Athlete 1", "Gr", "Athlete 2", "Gr", "Athlete 3", "Gr", "Athlete 4", "Gr", "Mark"];
+  } else if (state.view === "xc") {
+    headerCols = mobile
+      ? ["Rank", "Year", "Name", "Grade", "Mark"]
+      : ["Rank", "Year", "Name", "Grade", "Mark", "Meet", "Course", "Date"];
+  } else {
+    headerCols = mobile
+      ? ["Rank", "Year", "Name", "Grade", "Mark"]
+      : ["Rank", "Year", "Name", "Grade", "Mark", "Date"];
+  }
+
+  // rows
+  const rowsHtml = top.map((x, idx) => {
+    const r = x.raw;
+    const rank = idx + 1;
+
+    if (state.view === "competition") {
+      const a1 = String(r[cols.a1] || "");
+      const a2 = String(r[cols.a2] || "");
+      const a3 = String(r[cols.a3] || "");
+      const a4 = String(r[cols.a4] || "");
+      const g1 = String(r[cols.g1] || "");
+      const g2 = String(r[cols.g2] || "");
+      const g3 = String(r[cols.g3] || "");
+      const g4 = String(r[cols.g4] || "");
+
+      const modalBody = `
+        <div class="kv"><div class="k">Event</div><div class="v">${escapeHtml(eventName)}</div></div>
+        <div class="kv"><div class="k">Year</div><div class="v">${escapeHtml(r[cols.year])}</div></div>
+        <div class="kv"><div class="k">Mark</div><div class="v"><b>${escapeHtml(x.display)}</b></div></div>
+        <hr class="sep" />
+        <div class="kv"><div class="k">Athlete 1</div><div class="v">${escapeHtml(a1)} ${g1 ? `(${escapeHtml(g1)})` : ""}</div></div>
+        <div class="kv"><div class="k">Athlete 2</div><div class="v">${escapeHtml(a2)} ${g2 ? `(${escapeHtml(g2)})` : ""}</div></div>
+        <div class="kv"><div class="k">Athlete 3</div><div class="v">${escapeHtml(a3)} ${g3 ? `(${escapeHtml(g3)})` : ""}</div></div>
+        <div class="kv"><div class="k">Athlete 4</div><div class="v">${escapeHtml(a4)} ${g4 ? `(${escapeHtml(g4)})` : ""}</div></div>
+        ${r[cols.meet] ? `<hr class="sep" /><div class="kv"><div class="k">Meet</div><div class="v">${escapeHtml(r[cols.meet])}</div></div>` : ""}
+        ${r[cols.date] ? `<div class="kv"><div class="k">Date</div><div class="v">${escapeHtml(r[cols.date])}</div></div>` : ""}
+        ${r[cols.notes] ? `<div class="kv"><div class="k">Notes</div><div class="v">${escapeHtml(r[cols.notes])}</div></div>` : ""}
+      `.trim();
+
+      if (mobile) {
+        return `
+          <tr class="taprow" data-title="${escapeHtml(`${state.gender} • ${eventName}`)}" data-body="${escapeHtml(modalBody)}">
+            <td>${rank}</td>
+            <td>${escapeHtml(r[cols.year])}</td>
+            <td>${escapeHtml(a1)}</td>
+            <td>${escapeHtml(g1)}</td>
+            <td><b>${escapeHtml(x.display)}</b></td>
+          </tr>
+        `;
+      }
+
+      return `
+        <tr>
+          <td>${rank}</td>
+          <td>${escapeHtml(r[cols.year])}</td>
+
+          <td>${escapeHtml(a1)}</td><td>${escapeHtml(g1)}</td>
+          <td>${escapeHtml(a2)}</td><td>${escapeHtml(g2)}</td>
+          <td>${escapeHtml(a3)}</td><td>${escapeHtml(g3)}</td>
+          <td>${escapeHtml(a4)}</td><td>${escapeHtml(g4)}</td>
+
+          <td><b>${escapeHtml(x.display)}</b></td>
+        </tr>
+      `;
+    }
+
+    if (state.view === "xc") {
+      const modalBody = `
+        <div class="kv"><div class="k">Distance</div><div class="v">${escapeHtml(eventName)}</div></div>
+        <div class="kv"><div class="k">Year</div><div class="v">${escapeHtml(r[cols.year])}</div></div>
+        <div class="kv"><div class="k">Name</div><div class="v">${escapeHtml(r[cols.name])}</div></div>
+        <div class="kv"><div class="k">Grade</div><div class="v">${escapeHtml(r[cols.grade])}</div></div>
+        <div class="kv"><div class="k">Mark</div><div class="v"><b>${escapeHtml(x.display)}</b></div></div>
+        ${r[cols.meet] ? `<hr class="sep" /><div class="kv"><div class="k">Meet</div><div class="v">${escapeHtml(r[cols.meet])}</div></div>` : ""}
+        ${r[cols.course] ? `<div class="kv"><div class="k">Course</div><div class="v">${escapeHtml(r[cols.course])}</div></div>` : ""}
+        ${r[cols.date] ? `<div class="kv"><div class="k">Date</div><div class="v">${escapeHtml(r[cols.date])}</div></div>` : ""}
+      `.trim();
+
+      if (mobile) {
+        return `
+          <tr class="taprow" data-title="${escapeHtml(`${state.gender} • ${eventName}`)}" data-body="${escapeHtml(modalBody)}">
+            <td>${rank}</td>
+            <td>${escapeHtml(r[cols.year])}</td>
+            <td>${escapeHtml(r[cols.name])}</td>
+            <td>${escapeHtml(r[cols.grade])}</td>
+            <td><b>${escapeHtml(x.display)}</b></td>
+          </tr>
+        `;
+      }
+
+      return `
+        <tr>
+          <td>${rank}</td>
+          <td>${escapeHtml(r[cols.year])}</td>
+          <td>${escapeHtml(r[cols.name])}</td>
+          <td>${escapeHtml(r[cols.grade])}</td>
+          <td><b>${escapeHtml(x.display)}</b></td>
+          <td>${escapeHtml(r[cols.meet])}</td>
+          <td>${escapeHtml(r[cols.course])}</td>
+          <td>${escapeHtml(r[cols.date])}</td>
+        </tr>
+      `;
+    }
+
+    // training
+    const modalBody = `
+      <div class="kv"><div class="k">Metric</div><div class="v">${escapeHtml(eventName)}</div></div>
+      <div class="kv"><div class="k">Year</div><div class="v">${escapeHtml(r[cols.year])}</div></div>
+      <div class="kv"><div class="k">Name</div><div class="v">${escapeHtml(r[cols.name])}</div></div>
+      <div class="kv"><div class="k">Grade</div><div class="v">${escapeHtml(r[cols.grade])}</div></div>
+      <div class="kv"><div class="k">Mark</div><div class="v"><b>${escapeHtml(x.display)}</b></div></div>
+      ${r[cols.date] ? `<hr class="sep" /><div class="kv"><div class="k">Date</div><div class="v">${escapeHtml(r[cols.date])}</div></div>` : ""}
+      ${r[cols.notes] ? `<div class="kv"><div class="k">Notes</div><div class="v">${escapeHtml(r[cols.notes])}</div></div>` : ""}
+    `.trim();
+
+    if (mobile) {
+      return `
+        <tr class="taprow" data-title="${escapeHtml(`${state.gender} • ${eventName}`)}" data-body="${escapeHtml(modalBody)}">
+          <td>${rank}</td>
+          <td>${escapeHtml(r[cols.year])}</td>
+          <td>${escapeHtml(r[cols.name])}</td>
+          <td>${escapeHtml(r[cols.grade])}</td>
+          <td><b>${escapeHtml(x.display)}</b></td>
+        </tr>
+      `;
+    }
+
+    return `
+      <tr>
+        <td>${rank}</td>
+        <td>${escapeHtml(r[cols.year])}</td>
+        <td>${escapeHtml(r[cols.name])}</td>
+        <td>${escapeHtml(r[cols.grade])}</td>
+        <td><b>${escapeHtml(x.display)}</b></td>
+        <td>${escapeHtml(r[cols.date])}</td>
+      </tr>
+    `;
+  }).join("");
+
+  resEl.innerHTML = `
+    <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; align-items:baseline;">
+      <div><b>${escapeHtml(state.gender)} • ${escapeHtml(eventName)}</b></div>
+      <div style="opacity:.85;">Showing ${top.length} of ${filtered.length}</div>
+    </div>
+
+    <div style="overflow:auto; margin-top:10px;">
+      <table style="width:100%; border-collapse:collapse;">
+        <thead>
+          <tr>
+            ${headerCols.map(h => `<th style="text-align:left; padding:10px; border-bottom:1px solid rgba(255,255,255,.15); white-space:nowrap;">${h}</th>`).join("")}
+          </tr>
+        </thead>
+        <tbody id="tbodyRows">
+          ${rowsHtml || `<tr><td colspan="${headerCols.length}" style="padding:12px;">No matches.</td></tr>`}
+        </tbody>
+      </table>
+    </div>
+  `;
+
+  // Tap row -> modal (mobile only)
+  if (mobile) {
+    const tbody = document.getElementById("tbodyRows");
+    tbody.querySelectorAll("tr.taprow").forEach(tr => {
+      tr.addEventListener("click", () => {
+        // body stored escaped; unescape by leveraging a temp element
+        const title = tr.getAttribute("data-title") || "";
+        const bodyEsc = tr.getAttribute("data-body") || "";
+        const temp = document.createElement("textarea");
+        temp.innerHTML = bodyEsc;
+        const bodyHtml = temp.value;
+        openModal(title, bodyHtml);
+      });
+    });
+  }
+}
+
+/* -----------------------------
+   Tabs
+------------------------------ */
+function wireTabs() {
+  document.querySelectorAll("nav button[data-view]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      state.view = btn.getAttribute("data-view");
+      state.event = "";
+      render();
+    });
+  });
+}
+
+/* -----------------------------
+   Boot
+------------------------------ */
+async function boot() {
+  try {
+    elContent.innerHTML = `<div class="card"><b>Loading…</b></div>`;
+
+    await Promise.all([
+      ensureLoaded("competition"),
+      ensureLoaded("training"),
+      ensureLoaded("xc")
+    ]);
+
+    elLastUpdated.textContent = `Loaded: ${new Date().toLocaleString()}`;
+
+    wireTabs();
+    render();
+
+    // Re-render on orientation/resize (so mobile/desktop tables swap cleanly)
+    window.addEventListener("resize", () => {
+      // lightweight debounce
+      clearTimeout(window.__rr);
+      window.__rr = setTimeout(() => render(), 150);
+    });
+
+  } catch (err) {
+    elContent.innerHTML = `<div class="card"><b>Error</b><div>${escapeHtml(String(err))}</div></div>`;
+  }
+}
+
+boot();
