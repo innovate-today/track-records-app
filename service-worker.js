@@ -1,7 +1,10 @@
-const CACHE_VERSION = "v3";
-const CACHE_NAME = `records-cache-${CACHE_VERSION}`;
+/* Track Records PWA Service Worker
+   Cache-bust version: v9
+   (Increment v# any time you deploy changes)
+*/
+const CACHE_NAME = "track-records-cache-v9";
 
-const APP_SHELL = [
+const ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
@@ -13,39 +16,58 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+  );
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.map((k) => (k === CACHE_NAME ? null : caches.delete(k))))
-    )
-  );
-  self.clients.claim();
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve()))
+    );
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  if (req.method !== "GET") return;
+  event.respondWith((async () => {
+    try {
+      // Network first for JS/CSS/HTML so updates show up faster
+      const req = event.request;
+      const url = new URL(req.url);
 
-  const url = new URL(req.url);
+      const isSameOrigin = url.origin === self.location.origin;
+      const isCore =
+        isSameOrigin &&
+        (url.pathname.endsWith("/") ||
+         url.pathname.endsWith("/index.html") ||
+         url.pathname.endsWith("/app.js") ||
+         url.pathname.endsWith("/styles.css") ||
+         url.pathname.endsWith("/config.js") ||
+         url.pathname.endsWith("/manifest.webmanifest"));
 
-  // Google Sheets CSV: network-first, fallback to cache
-  if (url.search.includes("output=csv")) {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req))
-    );
-    return;
-  }
+      if (isCore) {
+        const fresh = await fetch(req);
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(req, fresh.clone());
+        return fresh;
+      }
 
-  // App shell: cache-first
-  event.respondWith(caches.match(req).then((cached) => cached || fetch(req)));
+      // Otherwise cache-first
+      const cached = await caches.match(req);
+      if (cached) return cached;
+
+      const res = await fetch(req);
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(req, res.clone());
+      return res;
+
+    } catch (e) {
+      const cached = await caches.match(event.request);
+      return cached || new Response("Offline", { status: 200 });
+    }
+  })());
 });
