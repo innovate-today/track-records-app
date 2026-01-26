@@ -13,13 +13,29 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Records" />
-  <link rel="apple-touch-icon" href="icon-512.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
 </head>
 
 <body>
-  <div id="app">
+  <!-- Access Gate -->
+  <div id="accessGate" class="gate">
+    <div class="gateCard">
+      <img src="icon-192.png" alt="Logo" class="gateLogo" />
+      <h1 class="gateTitle">Track & XC Records</h1>
+      <p class="gateSub">Enter the access code to continue.</p>
+
+      <input id="accessInput" class="gateInput" type="password" placeholder="Access code" />
+      <button id="accessBtn" class="gateBtn">Unlock</button>
+      <div id="accessError" class="gateError"></div>
+
+      <p class="gateHint">Tip: You only enter this once per device.</p>
+    </div>
+  </div>
+
+  <!-- App -->
+  <div id="app" class="hidden">
     <header class="app-header">
-      <img src="icon-512.png" alt="Logo" class="app-logo" />
+      <img src="icon-192.png" alt="Logo" class="app-logo" />
       <div class="app-title">
         <h1>Track & XC Records</h1>
         <p id="lastUpdated"></p>

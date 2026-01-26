@@ -26,13 +26,92 @@ html, body{
   font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
+.hidden{ display: none !important; }
+
 #app{
   max-width: 980px;
   margin: 0 auto;
   padding: 14px;
 }
 
-/* Header with logo (if you have it) */
+/* -------- Access Gate -------- */
+.gate{
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.gateCard{
+  width: min(92vw, 420px);
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 18px;
+  padding: 18px;
+  text-align: center;
+  box-shadow: 0 18px 60px rgba(0,0,0,.35);
+}
+
+.gateLogo{
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+  object-fit: cover;
+  margin-bottom: 10px;
+}
+
+.gateTitle{
+  margin: 0;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: .2px;
+}
+
+.gateSub{
+  margin: 6px 0 14px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.gateInput{
+  width: 100%;
+  padding: 12px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,.12);
+  color: var(--text);
+  outline: none;
+  font-size: 16px;
+}
+
+.gateBtn{
+  width: 100%;
+  margin-top: 10px;
+  padding: 12px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.20);
+  background: var(--btnActive);
+  color: var(--text);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.gateError{
+  margin-top: 10px;
+  min-height: 18px;
+  color: #ffb3b3;
+  font-size: 13px;
+}
+
+.gateHint{
+  margin: 12px 0 0;
+  color: rgba(255,255,255,.55);
+  font-size: 12px;
+}
+
+/* Header with logo */
 .app-header{
   display: flex;
   align-items: center;
@@ -163,18 +242,15 @@ select, input{
 
 .muted{ color: var(--muted); }
 
-/* Table wrap (gives us a scroll area so header can freeze) */
+/* Table wrap (freeze header) */
 .tableWrap{
   overflow: auto;
   margin-top: 10px;
   border-radius: 12px;
-
-  /* Key part for freeze header: scroll inside this container */
   max-height: 70vh;
   border: 1px solid rgba(255,255,255,.10);
 }
 
-/* Table */
 .tbl{
   width: 100%;
   border-collapse: collapse;
@@ -188,7 +264,6 @@ select, input{
   font-size: 14px;
 }
 
-/* Freeze header row */
 .tbl th{
   font-size: 12px;
   opacity: .90;
@@ -198,7 +273,6 @@ select, input{
   background: var(--bg);
 }
 
-/* Medal column feels nicer */
 .tbl td:first-child{
   font-weight: 800;
 }
@@ -206,7 +280,7 @@ select, input{
 tr.taprow{ cursor: pointer; }
 tr.taprow:hover{ background: rgba(255,255,255,.05); }
 
-/* Modal (tap-to-expand) */
+/* Modal (relay expand) */
 .modal.hidden{ display: none; }
 
 .modal{

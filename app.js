@@ -1,27 +1,86 @@
 /* =============================
    Track & XC Records App
-   FINAL CLEAN VERSION
-   - Medals for Top 3
-   - Freeze header row (CSS sticky th)
-   - All Years vs By Year toggle
-   - Blank rows hidden
-   - Sorting:
-       Running events ASC (fastest first)
-       Field events DESC (farthest/highest first)
-   - Field events detection includes full names + abbreviations
-   - Mobile: tap relay row to expand details
+   FINAL CLEAN VERSION + ACCESS GATE
 ============================= */
 
 const CONFIG = window.CONFIG;
+
+const elGate = document.getElementById("accessGate");
+const elApp = document.getElementById("app");
+const elAccessInput = document.getElementById("accessInput");
+const elAccessBtn = document.getElementById("accessBtn");
+const elAccessError = document.getElementById("accessError");
 
 const elContent = document.getElementById("content");
 const elLastUpdated = document.getElementById("lastUpdated");
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
 
+const ACCESS_OK_KEY = "access_ok";
+const ACCESS_VER_KEY = "access_ver";
+
+/* -----------------------------
+   Access Gate
+------------------------------ */
+function isAccessGranted() {
+  const ok = localStorage.getItem(ACCESS_OK_KEY) === "true";
+  const ver = Number(localStorage.getItem(ACCESS_VER_KEY) || "0");
+  return ok && ver === Number(CONFIG.ACCESS_VERSION || 1);
+}
+
+function grantAccess() {
+  localStorage.setItem(ACCESS_OK_KEY, "true");
+  localStorage.setItem(ACCESS_VER_KEY, String(CONFIG.ACCESS_VERSION || 1));
+}
+
+function lockAccess() {
+  localStorage.removeItem(ACCESS_OK_KEY);
+  localStorage.removeItem(ACCESS_VER_KEY);
+}
+
+function showGate(msg = "") {
+  if (elGate) elGate.classList.remove("hidden");
+  if (elApp) elApp.classList.add("hidden");
+  if (elAccessError) elAccessError.textContent = msg || "";
+  if (elAccessInput) elAccessInput.value = "";
+}
+
+function showApp() {
+  if (elGate) elGate.classList.add("hidden");
+  if (elApp) elApp.classList.remove("hidden");
+}
+
+function wireGate() {
+  if (!elAccessBtn || !elAccessInput) return;
+
+  const tryUnlock = () => {
+    const entered = String(elAccessInput.value || "").trim();
+    const expected = String(CONFIG.ACCESS_CODE || "").trim();
+
+    if (!expected) {
+      showGate("Access code is not configured.");
+      return;
+    }
+
+    if (entered === expected) {
+      grantAccess();
+      showApp();
+      bootApp();
+    } else {
+      if (elAccessError) elAccessError.textContent = "Incorrect code. Try again.";
+      elAccessInput.focus();
+      elAccessInput.select();
+    }
+  };
+
+  elAccessBtn.addEventListener("click", tryUnlock);
+  elAccessInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") tryUnlock();
+  });
+}
+
 /* -----------------------------
    Event type rules
 ------------------------------ */
-// Match full names + common variants (contains match)
 const FIELD_KEYWORDS = [
   "shot put", "shot",
   "discus", "discus throw",
@@ -31,10 +90,7 @@ const FIELD_KEYWORDS = [
   "pole vault"
 ];
 
-// Match exact abbreviations (token match)
-const FIELD_ABBREVIATIONS = new Set([
-  "sp", "dt", "lj", "tj", "hj", "pv"
-]);
+const FIELD_ABBREVIATIONS = new Set(["sp", "dt", "lj", "tj", "hj", "pv"]);
 
 function normalizeEventName(eventName) {
   return String(eventName || "")
@@ -54,13 +110,10 @@ function isFieldEvent(eventName) {
   const s = normalizeEventName(eventName);
   if (!s) return false;
 
-  // token-based check for abbreviations (e.g., "HJ", "PV", "Boys HJ")
   const tokens = s.split(" ").filter(Boolean);
   for (const t of tokens) {
     if (FIELD_ABBREVIATIONS.has(t)) return true;
   }
-
-  // contains-based check for full names/variants
   return FIELD_KEYWORDS.some(k => s === k || s.includes(k));
 }
 
@@ -135,14 +188,18 @@ function normalizeGender(g) {
 function parseMarkValue(v) {
   const s = String(v || "").trim();
   if (!s) return null;
-
   if (!isNaN(Number(s))) return Number(s);
 
   const p = s.split(":").map(x => Number(String(x).trim()));
   if (p.length === 2 && p.every(n => Number.isFinite(n))) return p[0] * 60 + p[1];
   if (p.length === 3 && p.every(n => Number.isFinite(n))) return p[0] * 3600 + p[1] * 60 + p[2];
-
   return null;
+}
+
+async function fetchCSV(url) {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) throw new Error("CSV fetch failed");
+  return await r.text();
 }
 
 function parseCSV(text) {
@@ -155,20 +212,10 @@ function parseCSV(text) {
     const ch = text[i];
     const next = text[i + 1];
 
-    if (ch === '"' && inQuotes && next === '"') {
-      cur += '"';
-      i++;
-      continue;
-    }
-    if (ch === '"') {
-      inQuotes = !inQuotes;
-      continue;
-    }
-    if (ch === "," && !inQuotes) {
-      row.push(cur);
-      cur = "";
-      continue;
-    }
+    if (ch === '"' && inQuotes && next === '"') { cur += '"'; i++; continue; }
+    if (ch === '"') { inQuotes = !inQuotes; continue; }
+    if (ch === "," && !inQuotes) { row.push(cur); cur = ""; continue; }
+
     if ((ch === "\n" || ch === "\r") && !inQuotes) {
       if (ch === "\r" && next === "\n") i++;
       row.push(cur);
@@ -184,7 +231,6 @@ function parseCSV(text) {
     row.push(cur);
     if (row.length > 1 || row[0] !== "") rows.push(row);
   }
-
   return rows;
 }
 
@@ -198,12 +244,6 @@ function rowsToObjects(rows) {
       headers.forEach((h, i) => o[h] = (r[i] ?? "").trim());
       return o;
     });
-}
-
-async function fetchCSV(url) {
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) throw new Error("CSV fetch failed");
-  return await r.text();
 }
 
 function uniqueSorted(list) {
@@ -259,7 +299,7 @@ function openModal(title, bodyHtml) {
 }
 
 /* -----------------------------
-   State
+   App state + data
 ------------------------------ */
 const state = {
   view: "competition",
@@ -278,9 +318,6 @@ async function ensureLoaded(view) {
   state.data[view] = rowsToObjects(parseCSV(txt));
 }
 
-/* -----------------------------
-   Render shell
------------------------------- */
 function renderShell() {
   const mobile = isMobile();
   elContent.innerHTML = `
@@ -343,9 +380,6 @@ function renderShell() {
   `;
 }
 
-/* -----------------------------
-   Render
------------------------------- */
 function render() {
   const rows = state.data[state.view];
   const cols = colsFor(state.view);
@@ -484,7 +518,6 @@ function renderResults() {
         <div class="kv"><div class="k">Athlete 3</div><div class="v">${escapeHtml(a3)} ${g3 ? `(${escapeHtml(g3)})` : ""}</div></div>
         <div class="kv"><div class="k">Athlete 4</div><div class="v">${escapeHtml(a4)} ${g4 ? `(${escapeHtml(g4)})` : ""}</div></div>
       `;
-
       const encoded = escapeHtml(modalBody);
 
       return `
@@ -523,50 +556,22 @@ function renderResults() {
     `;
   }).join("");
 
-  const viewLabel = (state.yearMode === "year" && state.yearPick !== "ALL")
-    ? `${escapeHtml(state.yearPick)}`
-    : `All Years`;
-
-  const sortLabel = fieldSort ? "Best = Highest" : "Best = Fastest";
-
   resEl.innerHTML = `
     <div class="summaryRow">
-      <div><b>${escapeHtml(state.gender)} • ${escapeHtml(state.event)} • ${viewLabel}</b></div>
-      <div class="muted">${sortLabel} • Showing ${filtered.length}</div>
+      <div><b>${escapeHtml(state.gender)} • ${escapeHtml(state.event)}</b></div>
+      <div class="muted">Showing ${filtered.length}</div>
     </div>
 
     <div class="tableWrap">
       <table class="tbl">
-        <thead>
-          <tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr>
-        </thead>
-        <tbody>
-          ${rowsHtml || `<tr><td colspan="${headers.length}">No matches.</td></tr>`}
-        </tbody>
+        <thead><tr>${headers.map(h => `<th>${escapeHtml(h)}</th>`).join("")}</tr></thead>
+        <tbody>${rowsHtml || `<tr><td colspan="${headers.length}">No matches.</td></tr>`}</tbody>
       </table>
     </div>
   `;
-
-  if (mobile && view === "competition") {
-    document.querySelectorAll("tr.taprow").forEach(tr => {
-      tr.addEventListener("click", () => {
-        const title = tr.getAttribute("data-title") || "";
-        const bodyEsc = tr.getAttribute("data-body") || "";
-
-        const tmp = document.createElement("textarea");
-        tmp.innerHTML = bodyEsc;
-        const bodyHtml = tmp.value;
-
-        openModal(title, bodyHtml);
-      });
-    });
-  }
 }
 
-/* -----------------------------
-   Boot + PWA
------------------------------- */
-async function boot() {
+async function bootApp() {
   await Promise.all([ensureLoaded("competition"), ensureLoaded("training"), ensureLoaded("xc")]);
   render();
 
@@ -574,12 +579,21 @@ async function boot() {
     clearTimeout(window.__rr);
     window.__rr = setTimeout(render, 150);
   });
-}
 
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
+  if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("./service-worker.js").catch(() => {});
-  });
+  }
 }
 
-boot();
+/* -----------------------------
+   Start
+------------------------------ */
+wireGate();
+
+if (isAccessGranted()) {
+  showApp();
+  bootApp();
+} else {
+  lockAccess();
+  showGate("");
+}
