@@ -1,8 +1,8 @@
 /* Track Records PWA Service Worker
-   Cache-bust version: v9
-   (Increment v# any time you deploy changes)
+   Cache version: v2
+   Increment this any time you deploy changes.
 */
-const CACHE_NAME = "track-records-cache-v9";
+const CACHE_NAME = "track-records-cache-v2";
 
 const ASSETS = [
   "./",
@@ -15,6 +15,7 @@ const ASSETS = [
   "./icon-512.png"
 ];
 
+// Install: cache core assets
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
@@ -22,6 +23,7 @@ self.addEventListener("install", (event) => {
   );
 });
 
+// Activate: remove old caches
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
@@ -32,22 +34,26 @@ self.addEventListener("activate", (event) => {
   })());
 });
 
+// Fetch strategy:
+// - Network-first for core files so updates show quickly
+// - Cache-first for everything else
 self.addEventListener("fetch", (event) => {
   event.respondWith((async () => {
-    try {
-      // Network first for JS/CSS/HTML so updates show up faster
-      const req = event.request;
-      const url = new URL(req.url);
+    const req = event.request;
 
+    try {
+      const url = new URL(req.url);
       const isSameOrigin = url.origin === self.location.origin;
+
       const isCore =
         isSameOrigin &&
-        (url.pathname.endsWith("/") ||
+        (url.pathname === "/" ||
          url.pathname.endsWith("/index.html") ||
          url.pathname.endsWith("/app.js") ||
          url.pathname.endsWith("/styles.css") ||
          url.pathname.endsWith("/config.js") ||
-         url.pathname.endsWith("/manifest.webmanifest"));
+         url.pathname.endsWith("/manifest.webmanifest") ||
+         url.pathname.endsWith("/service-worker.js"));
 
       if (isCore) {
         const fresh = await fetch(req);
@@ -56,7 +62,7 @@ self.addEventListener("fetch", (event) => {
         return fresh;
       }
 
-      // Otherwise cache-first
+      // Cache-first fallback
       const cached = await caches.match(req);
       if (cached) return cached;
 
@@ -66,7 +72,7 @@ self.addEventListener("fetch", (event) => {
       return res;
 
     } catch (e) {
-      const cached = await caches.match(event.request);
+      const cached = await caches.match(req);
       return cached || new Response("Offline", { status: 200 });
     }
   })());
