@@ -1,87 +1,227 @@
-body {
+/* ===============================
+   Track & XC Records App Styles
+================================ */
+
+:root{
+  --bg: #0b1a2a;
+  --card: rgba(255,255,255,.03);
+  --border: rgba(255,255,255,.15);
+  --border2: rgba(255,255,255,.18);
+  --text: #ffffff;
+  --muted: rgba(255,255,255,.75);
+  --tab: rgba(255,255,255,.06);
+  --tabHover: rgba(255,255,255,.12);
+  --tabActive: #2b5a8a;
+  --btn: #1e3a5f;
+  --btnActive: #2b5a8a;
+}
+
+*{ box-sizing: border-box; }
+
+html, body{
   margin: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #0b1a2a;
-  color: white;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
 }
 
-.hidden {
-  display: none;
+#app{
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 14px;
 }
 
-.gate {
-  min-height: 100vh;
+/* Header with logo (if you have it) */
+.app-header{
   display: flex;
-  flex-direction: column;
-  justify-content: center;
   align-items: center;
+  gap: 12px;
+  padding: 10px 0 12px;
 }
 
-input, button {
-  padding: 12px;
-  font-size: 16px;
-  margin: 8px;
+.app-logo{
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  object-fit: cover;
 }
 
-/* =========================
-   Mobile formatting
-========================= */
-@media (max-width: 768px) {
-  nav {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
-
-  nav button {
-    flex: 1;
-    padding: 12px;
-    font-size: 16px;
-  }
-
-  .card {
-    padding: 12px;
-  }
-
-  select, input, button {
-    font-size: 16px;
-    padding: 12px;
-  }
-
-  table {
-    font-size: 14px;
-  }
-
-  th, td {
-    padding: 8px;
-  }
-
-  header h1 {
-    font-size: 22px;
-  }
-
-  header p {
-    font-size: 13px;
-  }
+.app-title h1{
+  margin: 0;
+  font-size: 20px;
+  letter-spacing: .2px;
 }
 
-/* iPhone safe-area */
-body {
-  padding-bottom: env(safe-area-inset-bottom);
+.app-title p{
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
 }
 
-/* =========================
-   Tap row modal
-========================= */
-.modal.hidden { display: none; }
-.modal { position: fixed; inset: 0; z-index: 9999; }
+/* Pill tabs */
+nav{
+  display: flex;
+  gap: 10px;
+  padding: 8px 0;
+}
 
-.modal-backdrop {
-  position: fixed; inset: 0;
+nav button[data-view]{
+  flex: 1;
+  border-radius: 999px;
+  padding: 12px 14px;
+  border: 1px solid var(--border2);
+  background: var(--tab);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .18s ease;
+}
+
+nav button[data-view]:hover{
+  background: var(--tabHover);
+}
+
+nav button[data-view].active{
+  background: var(--tabActive);
+  border-color: var(--tabActive);
+}
+
+/* Cards */
+.card{
+  background: var(--card);
+  padding: 14px;
+  border-radius: 14px;
+  margin: 14px 0;
+  border: 1px solid rgba(255,255,255,.08);
+}
+
+/* Filters */
+.filters{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+}
+
+.label{
+  font-size: 12px;
+  opacity: .85;
+  margin-bottom: 6px;
+}
+
+.searchWrap{
+  flex: 1;
+  min-width: 220px;
+}
+
+select, input{
+  width: 100%;
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,.12);
+  color: var(--text);
+  outline: none;
+}
+
+.genderBtns{
+  display: flex;
+  gap: 8px;
+}
+
+.genderBtns button{
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.20);
+  background: var(--btn);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.genderBtns button.active{
+  background: var(--btnActive);
+  border-color: var(--btnActive);
+}
+
+.tip{
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Summary */
+.summaryRow{
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.muted{ color: var(--muted); }
+
+/* Table wrap (gives us a scroll area so header can freeze) */
+.tableWrap{
+  overflow: auto;
+  margin-top: 10px;
+  border-radius: 12px;
+
+  /* Key part for freeze header: scroll inside this container */
+  max-height: 70vh;
+  border: 1px solid rgba(255,255,255,.10);
+}
+
+/* Table */
+.tbl{
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.tbl th, .tbl td{
+  padding: 10px;
+  border-bottom: 1px solid rgba(255,255,255,.12);
+  white-space: nowrap;
+  text-align: left;
+  font-size: 14px;
+}
+
+/* Freeze header row */
+.tbl th{
+  font-size: 12px;
+  opacity: .90;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
+}
+
+/* Medal column feels nicer */
+.tbl td:first-child{
+  font-weight: 800;
+}
+
+tr.taprow{ cursor: pointer; }
+tr.taprow:hover{ background: rgba(255,255,255,.05); }
+
+/* Modal (tap-to-expand) */
+.modal.hidden{ display: none; }
+
+.modal{
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+}
+
+.modal-backdrop{
+  position: fixed;
+  inset: 0;
   background: rgba(0,0,0,.55);
 }
 
-.modal-card {
+.modal-card{
   position: fixed;
   left: 50%;
   top: 50%;
@@ -96,138 +236,70 @@ body {
   padding: 14px;
 }
 
-.modal-header {
+.modal-header{
   display: flex;
-  align-items: center;
   justify-content: space-between;
   gap: 10px;
+  align-items: center;
   margin-bottom: 10px;
 }
 
-.modal-title {
-  font-weight: 700;
+.modal-title{
+  font-weight: 800;
   font-size: 16px;
 }
 
-.modal-close {
+.modal-close{
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: 999px;
   border: 1px solid rgba(255,255,255,.2);
-  background: #1e3a5f;
-  color: #fff;
+  background: var(--btn);
+  color: var(--text);
   cursor: pointer;
+  font-weight: 700;
 }
 
-.kv {
+.kv{
   display: grid;
   grid-template-columns: 110px 1fr;
   gap: 10px;
   padding: 6px 0;
 }
 
-.kv .k { opacity: .75; font-size: 12px; }
-.kv .v { font-size: 14px; }
+.kv .k{
+  opacity: .75;
+  font-size: 12px;
+}
 
-.sep {
+.kv .v{
+  font-size: 14px;
+}
+
+.sep{
   border: none;
   border-top: 1px solid rgba(255,255,255,.15);
   margin: 10px 0;
 }
 
-/* Make tap rows feel tappable */
-tr.taprow { cursor: pointer; }
-tr.taprow:hover { background: rgba(255,255,255,.05); }
+/* Sticky (mobile) */
+@media (max-width: 768px){
+  nav{
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: var(--bg);
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
 
+  .card:first-of-type{
+    position: sticky;
+    top: 64px;
+    z-index: 29;
+    background: var(--bg);
+  }
 
-/* ---------- layout helpers ---------- */
-.card { background: rgba(255,255,255,.03); padding: 14px; border-radius: 14px; margin: 14px 0; }
-.filters { display:flex; flex-wrap:wrap; gap:12px; align-items:end; }
-.label { font-size: 12px; opacity:.8; margin-bottom:6px; }
-.searchWrap { flex: 1; min-width: 220px; }
-.searchWrap input, select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,.15); background: rgba(0,0,0,.15); color: #fff; }
-.genderBtns button { padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.2); background: #1e3a5f; color:#fff; cursor:pointer; }
-.genderBtns button.active { background: #2b5a8a; }
-.tip { margin-top:10px; font-size:12px; opacity:.75; }
-.summaryRow { display:flex; justify-content:space-between; gap:12px; align-items:baseline; }
-.muted { opacity:.75; }
-.tableWrap { overflow:auto; margin-top:10px; }
-.tbl { width:100%; border-collapse:collapse; }
-.tbl th, .tbl td { padding:10px; border-bottom: 1px solid rgba(255,255,255,.12); white-space:nowrap; text-align:left; }
-tr.taprow { cursor:pointer; }
-tr.taprow:hover { background: rgba(255,255,255,.05); }
-
-/* ---------- modal ---------- */
-.modal.hidden { display: none; }
-.modal { position: fixed; inset: 0; z-index: 9999; }
-.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.55); }
-.modal-card {
-  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  width: min(92vw, 520px); max-height: 80vh; overflow: auto;
-  background: #0f2a44; border: 1px solid rgba(255,255,255,.15);
-  border-radius: 16px; box-shadow: 0 16px 50px rgba(0,0,0,.45);
-  padding: 14px;
+  .tableWrap{
+    max-height: 68vh;
+  }
 }
-.modal-header { display:flex; justify-content:space-between; gap:10px; align-items:center; margin-bottom:10px; }
-.modal-title { font-weight:700; font-size:16px; }
-.modal-close {
-  padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(255,255,255,.2);
-  background: #1e3a5f; color:#fff; cursor:pointer;
-}
-.kv { display:grid; grid-template-columns: 110px 1fr; gap:10px; padding: 6px 0; }
-.kv .k { opacity:.75; font-size:12px; }
-.kv .v { font-size:14px; }
-.sep { border:none; border-top: 1px solid rgba(255,255,255,.15); margin:10px 0; }
-
-
-/* Rounded top tabs */
-nav {
-  display: flex;
-  gap: 12px;
-  padding: 10px 0;
-}
-
-nav button[data-view]{
-  border-radius: 16px;
-  padding: 14px 18px;
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.06);
-  color: #fff;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-nav button[data-view]:hover{
-  background: rgba(255,255,255,.10);
-}
-
-
-/* ===============================
-   Pill Tabs (Competition / Training / XC)
-================================ */
-nav {
-  display: flex;
-  gap: 10px;
-  padding: 8px 0;
-}
-
-nav button[data-view] {
-  flex: 1;
-  border-radius: 999px;
-  padding: 12px 14px;
-  border: 1px solid rgba(255,255,255,.18);
-  background: rgba(255,255,255,.06);
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all .2s ease;
-}
-
-nav button[data-view]:hover {
-  background: rgba(255,255,255,.12);
-}
-
-nav button[data-view].active {
-  background: #2b5a8a;
-  border-color: #2b5a8a;
-}
-
