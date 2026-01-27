@@ -1,10 +1,10 @@
 /* Track Records PWA Service Worker
-   Cache version: v2
-   Increment this any time you deploy changes.
+   Cache version: v3
+   Bump this version any time you deploy changes.
 */
-const CACHE_NAME = "track-records-cache-v2";
+const CACHE_NAME = "track-records-cache-v3";
 
-const ASSETS = [
+const CORE_ASSETS = [
   "./",
   "./index.html",
   "./styles.css",
@@ -19,7 +19,7 @@ const ASSETS = [
 self.addEventListener("install", (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(CORE_ASSETS))
   );
 });
 
@@ -27,33 +27,31 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(
-      keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : Promise.resolve()))
-    );
+    await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)));
     await self.clients.claim();
   })());
 });
 
 // Fetch strategy:
-// - Network-first for core files so updates show quickly
-// - Cache-first for everything else
+// - Network-first for core assets so updates land quickly
+// - Cache-first for everything else (good offline behavior)
 self.addEventListener("fetch", (event) => {
   event.respondWith((async () => {
     const req = event.request;
 
     try {
       const url = new URL(req.url);
-      const isSameOrigin = url.origin === self.location.origin;
+      const sameOrigin = url.origin === self.location.origin;
 
-      const isCore =
-        isSameOrigin &&
-        (url.pathname === "/" ||
-         url.pathname.endsWith("/index.html") ||
-         url.pathname.endsWith("/app.js") ||
-         url.pathname.endsWith("/styles.css") ||
-         url.pathname.endsWith("/config.js") ||
-         url.pathname.endsWith("/manifest.webmanifest") ||
-         url.pathname.endsWith("/service-worker.js"));
+      const isCore = sameOrigin && (
+        url.pathname === "/" ||
+        url.pathname.endsWith("/index.html") ||
+        url.pathname.endsWith("/styles.css") ||
+        url.pathname.endsWith("/app.js") ||
+        url.pathname.endsWith("/config.js") ||
+        url.pathname.endsWith("/manifest.webmanifest") ||
+        url.pathname.endsWith("/service-worker.js")
+      );
 
       if (isCore) {
         const fresh = await fetch(req);
@@ -62,7 +60,6 @@ self.addEventListener("fetch", (event) => {
         return fresh;
       }
 
-      // Cache-first fallback
       const cached = await caches.match(req);
       if (cached) return cached;
 
@@ -71,7 +68,7 @@ self.addEventListener("fetch", (event) => {
       cache.put(req, res.clone());
       return res;
 
-    } catch (e) {
+    } catch (err) {
       const cached = await caches.match(req);
       return cached || new Response("Offline", { status: 200 });
     }
