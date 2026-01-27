@@ -1,6 +1,7 @@
 /* =============================
    Track & XC Records App
-   FINAL CLEAN VERSION + ACCESS GATE
+   CLEAN VERSION + ACCESS GATE
+   Fix: Relay rows expand on mobile (tap row)
 ============================= */
 
 const CONFIG = window.CONFIG;
@@ -15,11 +16,12 @@ const elContent = document.getElementById("content");
 const elLastUpdated = document.getElementById("lastUpdated");
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
 
+// ---- Storage keys
 const ACCESS_OK_KEY = "access_ok";
 const ACCESS_VER_KEY = "access_ver";
 
 /* -----------------------------
-   Access Gate
+   Access Gate (unlimited tries)
 ------------------------------ */
 function isAccessGranted() {
   const ok = localStorage.getItem(ACCESS_OK_KEY) === "true";
@@ -38,15 +40,15 @@ function lockAccess() {
 }
 
 function showGate(msg = "") {
-  if (elGate) elGate.classList.remove("hidden");
-  if (elApp) elApp.classList.add("hidden");
+  elGate?.classList.remove("hidden");
+  elApp?.classList.add("hidden");
   if (elAccessError) elAccessError.textContent = msg || "";
   if (elAccessInput) elAccessInput.value = "";
 }
 
 function showApp() {
-  if (elGate) elGate.classList.add("hidden");
-  if (elApp) elApp.classList.remove("hidden");
+  elGate?.classList.add("hidden");
+  elApp?.classList.remove("hidden");
 }
 
 function wireGate() {
@@ -79,7 +81,7 @@ function wireGate() {
 }
 
 /* -----------------------------
-   Event type rules
+   Event type rules (sorting)
 ------------------------------ */
 const FIELD_KEYWORDS = [
   "shot put", "shot",
@@ -109,12 +111,16 @@ function normalizeEventName(eventName) {
 function isFieldEvent(eventName) {
   const s = normalizeEventName(eventName);
   if (!s) return false;
-
   const tokens = s.split(" ").filter(Boolean);
   for (const t of tokens) {
     if (FIELD_ABBREVIATIONS.has(t)) return true;
   }
   return FIELD_KEYWORDS.some(k => s === k || s.includes(k));
+}
+
+function isRelayEvent(eventName) {
+  const s = normalizeEventName(eventName);
+  return s.includes("4x") || s.includes("relay");
 }
 
 /* -----------------------------
@@ -188,6 +194,7 @@ function normalizeGender(g) {
 function parseMarkValue(v) {
   const s = String(v || "").trim();
   if (!s) return null;
+
   if (!isNaN(Number(s))) return Number(s);
 
   const p = s.split(":").map(x => Number(String(x).trim()));
@@ -283,7 +290,6 @@ function ensureModal() {
   const close = () => m.classList.add("hidden");
   m.querySelector("#modalClose").addEventListener("click", close);
   m.querySelector("#modalBackdrop").addEventListener("click", close);
-
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !m.classList.contains("hidden")) close();
   });
@@ -318,6 +324,9 @@ async function ensureLoaded(view) {
   state.data[view] = rowsToObjects(parseCSV(txt));
 }
 
+/* -----------------------------
+   UI Shell + Render
+------------------------------ */
 function renderShell() {
   const mobile = isMobile();
   elContent.innerHTML = `
@@ -352,19 +361,6 @@ function renderShell() {
           </select>
         </div>
 
-        <div>
-          <div class="label">View</div>
-          <select id="yearModeSelect">
-            <option value="all">All Years</option>
-            <option value="year">By Year</option>
-          </select>
-        </div>
-
-        <div id="yearPickWrap">
-          <div class="label">Year</div>
-          <select id="yearPickSelect"></select>
-        </div>
-
         <div class="searchWrap">
           <div class="label">Search</div>
           <input id="searchInput" placeholder="Type a name…" />
@@ -392,8 +388,6 @@ function render() {
       state.view = b.dataset.view;
       state.event = "";
       state.search = "";
-      state.yearMode = "all";
-      state.yearPick = "ALL";
       render();
     };
   });
@@ -419,33 +413,12 @@ function render() {
   const searchInput = document.getElementById("searchInput");
   searchInput.value = state.search;
 
-  const yearModeSelect = document.getElementById("yearModeSelect");
-  const yearPickWrap = document.getElementById("yearPickWrap");
-  const yearPickSelect = document.getElementById("yearPickSelect");
-
-  yearModeSelect.value = state.yearMode;
-  yearPickWrap.style.display = state.yearMode === "year" ? "" : "none";
-
-  const years = uniqueSorted(rows.map(r => r[cols.year])).sort((a, b) => b.localeCompare(a));
-  yearPickSelect.innerHTML =
-    [`<option value="ALL">All Years</option>`]
-      .concat(years.map(y => `<option value="${escapeHtml(y)}">${escapeHtml(y)}</option>`))
-      .join("");
-  yearPickSelect.value = state.yearPick;
-
   eventSelect.onchange = (e) => { state.event = e.target.value; renderResults(); };
   topSelect.onchange = (e) => { state.topN = Number(e.target.value); renderResults(); };
   searchInput.oninput = (e) => { state.search = e.target.value; renderResults(); };
 
   boysBtn.onclick = () => { state.gender = "Boys"; renderResults(); boysBtn.classList.add("active"); girlsBtn.classList.remove("active"); };
   girlsBtn.onclick = () => { state.gender = "Girls"; renderResults(); girlsBtn.classList.add("active"); boysBtn.classList.remove("active"); };
-
-  yearModeSelect.onchange = (e) => {
-    state.yearMode = e.target.value;
-    if (state.yearMode !== "year") state.yearPick = "ALL";
-    render();
-  };
-  yearPickSelect.onchange = (e) => { state.yearPick = e.target.value; renderResults(); };
 
   elLastUpdated.textContent = `Loaded ${new Date().toLocaleString()}`;
   renderResults();
@@ -459,15 +432,11 @@ function renderResults() {
 
   const search = state.search.toLowerCase().trim();
   const fieldSort = isFieldEvent(state.event);
+  const relayMode = (view === "competition" && isRelayEvent(state.event));
 
   const filtered = rows
     .filter(r => String(r[cols.event] || "").trim() === String(state.event || "").trim())
     .filter(r => normalizeGender(r[cols.gender]) === state.gender)
-    .filter(r => {
-      if (state.yearMode !== "year") return true;
-      if (state.yearPick === "ALL") return true;
-      return String(r[cols.year] || "").trim() === String(state.yearPick).trim();
-    })
     .filter(r => {
       if (!search) return true;
       if (view === "competition") {
@@ -507,21 +476,36 @@ function renderResults() {
       const a1 = r[cols.a1] || "", a2 = r[cols.a2] || "", a3 = r[cols.a3] || "", a4 = r[cols.a4] || "";
       const g1 = r[cols.g1] || "", g2 = r[cols.g2] || "", g3 = r[cols.g3] || "", g4 = r[cols.g4] || "";
 
-      const modalBody = `
-        <div class="kv"><div class="k">Event</div><div class="v">${escapeHtml(state.event)}</div></div>
-        <div class="kv"><div class="k">Gender</div><div class="v">${escapeHtml(state.gender)}</div></div>
-        <div class="kv"><div class="k">Year</div><div class="v">${escapeHtml(r[cols.year])}</div></div>
-        <div class="kv"><div class="k">Mark</div><div class="v"><b>${escapeHtml(x.disp)}</b></div></div>
-        <hr class="sep" />
-        <div class="kv"><div class="k">Athlete 1</div><div class="v">${escapeHtml(a1)} ${g1 ? `(${escapeHtml(g1)})` : ""}</div></div>
-        <div class="kv"><div class="k">Athlete 2</div><div class="v">${escapeHtml(a2)} ${g2 ? `(${escapeHtml(g2)})` : ""}</div></div>
-        <div class="kv"><div class="k">Athlete 3</div><div class="v">${escapeHtml(a3)} ${g3 ? `(${escapeHtml(g3)})` : ""}</div></div>
-        <div class="kv"><div class="k">Athlete 4</div><div class="v">${escapeHtml(a4)} ${g4 ? `(${escapeHtml(g4)})` : ""}</div></div>
-      `;
-      const encoded = escapeHtml(modalBody);
+      const isRelayRow = relayMode && (a2 || a3 || a4); // only if it actually has other legs
 
+      if (isRelayRow) {
+        const modalBody = `
+          <div class="kv"><div class="k">Event</div><div class="v">${escapeHtml(state.event)}</div></div>
+          <div class="kv"><div class="k">Gender</div><div class="v">${escapeHtml(state.gender)}</div></div>
+          <div class="kv"><div class="k">Year</div><div class="v">${escapeHtml(r[cols.year])}</div></div>
+          <div class="kv"><div class="k">Mark</div><div class="v"><b>${escapeHtml(x.disp)}</b></div></div>
+          <hr class="sep" />
+          <div class="kv"><div class="k">Leg 1</div><div class="v">${escapeHtml(a1)} ${g1 ? `(${escapeHtml(g1)})` : ""}</div></div>
+          <div class="kv"><div class="k">Leg 2</div><div class="v">${escapeHtml(a2)} ${g2 ? `(${escapeHtml(g2)})` : ""}</div></div>
+          <div class="kv"><div class="k">Leg 3</div><div class="v">${escapeHtml(a3)} ${g3 ? `(${escapeHtml(g3)})` : ""}</div></div>
+          <div class="kv"><div class="k">Leg 4</div><div class="v">${escapeHtml(a4)} ${g4 ? `(${escapeHtml(g4)})` : ""}</div></div>
+        `;
+        const encoded = escapeHtml(modalBody);
+
+        return `
+          <tr class="taprow" data-title="${escapeHtml(state.event)}" data-body="${encoded}">
+            <td>${escapeHtml(rankCell)}</td>
+            <td>${escapeHtml(r[cols.year])}</td>
+            <td>${escapeHtml(a1)} <span style="opacity:.65;">(tap)</span></td>
+            <td>${escapeHtml(g1)}</td>
+            <td><b>${escapeHtml(x.disp)}</b></td>
+          </tr>
+        `;
+      }
+
+      // non-relay competition row on mobile
       return `
-        <tr class="taprow" data-title="${escapeHtml(state.event)}" data-body="${encoded}">
+        <tr>
           <td>${escapeHtml(rankCell)}</td>
           <td>${escapeHtml(r[cols.year])}</td>
           <td>${escapeHtml(a1)}</td>
@@ -559,7 +543,7 @@ function renderResults() {
   resEl.innerHTML = `
     <div class="summaryRow">
       <div><b>${escapeHtml(state.gender)} • ${escapeHtml(state.event)}</b></div>
-      <div class="muted">Showing ${filtered.length}</div>
+      <div class="muted">${fieldSort ? "Field: highest wins" : "Running: fastest wins"} • Showing ${filtered.length}</div>
     </div>
 
     <div class="tableWrap">
@@ -569,10 +553,35 @@ function renderResults() {
       </table>
     </div>
   `;
+
+  // Wire relay tap rows (mobile only)
+  if (mobile && view === "competition") {
+    document.querySelectorAll("tr.taprow").forEach(tr => {
+      tr.addEventListener("click", () => {
+        const title = tr.getAttribute("data-title") || "";
+        const bodyEsc = tr.getAttribute("data-body") || "";
+
+        // decode HTML safely
+        const tmp = document.createElement("textarea");
+        tmp.innerHTML = bodyEsc;
+        const bodyHtml = tmp.value;
+
+        openModal(title, bodyHtml);
+      });
+    });
+  }
 }
 
+/* -----------------------------
+   Boot + PWA
+------------------------------ */
 async function bootApp() {
-  await Promise.all([ensureLoaded("competition"), ensureLoaded("training"), ensureLoaded("xc")]);
+  await Promise.all([
+    ensureLoaded("competition"),
+    ensureLoaded("training"),
+    ensureLoaded("xc")
+  ]);
+
   render();
 
   window.addEventListener("resize", () => {
