@@ -1,8 +1,8 @@
 /* Track Records PWA Service Worker
-   Cache version: v3
-   Bump this version any time you deploy changes.
+   Cache version: v4
+   Bump this any time you deploy changes.
 */
-const CACHE_NAME = "track-records-cache-v3";
+const CACHE_NAME = "track-records-cache-v4";
 
 const CORE_ASSETS = [
   "./",
@@ -27,14 +27,16 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null)));
+    await Promise.all(
+      keys.map((k) => (k !== CACHE_NAME ? caches.delete(k) : null))
+    );
     await self.clients.claim();
   })());
 });
 
 // Fetch strategy:
-// - Network-first for core assets so updates land quickly
-// - Cache-first for everything else (good offline behavior)
+// - Network-first for core files to get updates quickly
+// - Cache-first for everything else for strong offline support
 self.addEventListener("fetch", (event) => {
   event.respondWith((async () => {
     const req = event.request;
@@ -68,7 +70,7 @@ self.addEventListener("fetch", (event) => {
       cache.put(req, res.clone());
       return res;
 
-    } catch (err) {
+    } catch (e) {
       const cached = await caches.match(req);
       return cached || new Response("Offline", { status: 200 });
     }
