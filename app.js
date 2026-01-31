@@ -1,31 +1,82 @@
 /* =============================
    Track & XC Records App
    CLEAN VERSION + ACCESS GATE
-   Includes:
-   - Relay expand on mobile (tap relay row)
-   - Year mode toggle: All Years / By Year + year dropdown
-   - Sorting: running asc, field desc
+   Adds:
+   - Manual "Refresh Data" button
+   - Auto-refresh every 24 hours (when online)
+   - Offline data via IndexedDB caching of CSV
+   - Keeps: All Years / By Year, relay expand, sorting rules
 ============================= */
 
 const CONFIG = window.CONFIG;
 
+// --------- DOM
 const elGate = document.getElementById("accessGate");
-const elApp = document.getElementById("app");
+const elApp  = document.getElementById("app");
 const elAccessInput = document.getElementById("accessInput");
-const elAccessBtn = document.getElementById("accessBtn");
+const elAccessBtn   = document.getElementById("accessBtn");
 const elAccessError = document.getElementById("accessError");
 
-const elContent = document.getElementById("content");
+const elContent     = document.getElementById("content");
 const elLastUpdated = document.getElementById("lastUpdated");
+
 const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
 
-// ---- Storage keys
-const ACCESS_OK_KEY = "access_ok";
+// --------- Access storage keys
+const ACCESS_OK_KEY  = "access_ok";
 const ACCESS_VER_KEY = "access_ver";
 
-/* -----------------------------
-   Access Gate (unlimited tries)
------------------------------- */
+// --------- Refresh settings
+const AUTO_REFRESH_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+// --------- IndexedDB (offline data cache)
+const DB_NAME = "track_records_db";
+const DB_VERSION = 1;
+const STORE = "kv";
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbGet(key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readonly");
+    const r = tx.objectStore(STORE).get(key);
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  });
+}
+
+async function idbSet(key, value) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).put(value, key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function idbDel(key) {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, "readwrite");
+    tx.objectStore(STORE).delete(key);
+    tx.oncomplete = () => resolve(true);
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// --------- Access gate (unlimited tries)
 function isAccessGranted() {
   const ok = localStorage.getItem(ACCESS_OK_KEY) === "true";
   const ver = Number(localStorage.getItem(ACCESS_VER_KEY) || "0");
@@ -53,14 +104,13 @@ function wireGate() {
   if (!elAccessBtn || !elAccessInput) return;
 
   const tryUnlock = () => {
-    const entered = String(elAccessInput.value || "").trim();
+    const entered  = String(elAccessInput.value || "").trim();
     const expected = String(CONFIG.ACCESS_CODE || "").trim();
 
     if (!expected) {
       showGate("Access code is not configured.");
       return;
     }
-
     if (entered === expected) {
       grantAccess();
       showApp();
@@ -78,9 +128,7 @@ function wireGate() {
   });
 }
 
-/* -----------------------------
-   Sorting rules
------------------------------- */
+// --------- Sorting rules
 const FIELD_KEYWORDS = [
   "shot put", "shot",
   "discus", "discus throw",
@@ -116,9 +164,7 @@ function isRelayEvent(eventName) {
   return s.includes("4x") || s.includes("relay");
 }
 
-/* -----------------------------
-   Column mapping
------------------------------- */
+// --------- Column mapping
 function colsFor(view) {
   if (view === "competition") {
     return {
@@ -156,9 +202,7 @@ function colsFor(view) {
   return {};
 }
 
-/* -----------------------------
-   Helpers
------------------------------- */
+// --------- Helpers
 function escapeHtml(s) {
   return String(s ?? "")
     .replaceAll("&", "&amp;")
@@ -185,11 +229,29 @@ function parseMarkValue(v) {
   return null;
 }
 
+function uniqueSorted(list) {
+  return Array.from(new Set(list.filter(Boolean).map(x => String(x).trim()).filter(Boolean)))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+function medalForRank(rank) {
+  if (rank === 1) return "🥇";
+  if (rank === 2) return "🥈";
+  if (rank === 3) return "🥉";
+  return "";
+}
+
+// --------- CSV fetch (cache-busted)
 async function fetchCSV(url) {
-  const r = await fetch(url, { cache: "no-store" });
+  const bust = (url.includes("?") ? "&" : "?") + "v=" + Date.now();
+  const freshUrl = url + bust;
+
+  const r = await fetch(freshUrl, { cache: "no-store" });
   if (!r.ok) throw new Error("CSV fetch failed");
   return await r.text();
 }
+
+// --------- CSV parsing
 function parseCSV(text) {
   const rows = [];
   let row = [];
@@ -212,6 +274,7 @@ function parseCSV(text) {
       row = [];
       continue;
     }
+
     cur += ch;
   }
 
@@ -219,8 +282,10 @@ function parseCSV(text) {
     row.push(cur);
     if (row.length > 1 || row[0] !== "") rows.push(row);
   }
+
   return rows;
 }
+
 function rowsToObjects(rows) {
   if (!rows || rows.length < 2) return [];
   const headers = rows[0].map(h => (h || "").trim());
@@ -232,20 +297,8 @@ function rowsToObjects(rows) {
       return o;
     });
 }
-function uniqueSorted(list) {
-  return Array.from(new Set(list.filter(Boolean).map(x => String(x).trim()).filter(Boolean)))
-    .sort((a, b) => a.localeCompare(b));
-}
-function medalForRank(rank) {
-  if (rank === 1) return "🥇";
-  if (rank === 2) return "🥈";
-  if (rank === 3) return "🥉";
-  return "";
-}
 
-/* -----------------------------
-   Modal (relay expand on mobile)
------------------------------- */
+// --------- Modal (relay expand)
 function ensureModal() {
   let m = document.getElementById("rowModal");
   if (m) return m;
@@ -274,6 +327,7 @@ function ensureModal() {
 
   return m;
 }
+
 function openModal(title, bodyHtml) {
   const m = ensureModal();
   m.querySelector("#modalTitle").textContent = title;
@@ -281,31 +335,107 @@ function openModal(title, bodyHtml) {
   m.classList.remove("hidden");
 }
 
-/* -----------------------------
-   App state
------------------------------- */
+// --------- App state
 const state = {
   view: "competition",
   gender: "Girls",
   event: "",
   topN: 25,
   search: "",
-  yearMode: "all",  // "all" | "year"
+  yearMode: "all", // "all" | "year"
   yearPick: "ALL",
   data: { competition: [], training: [], xc: [] }
 };
 
-async function ensureLoaded(view) {
-  if (state.data[view].length) return;
-  const txt = await fetchCSV(CONFIG.CSV_URLS[view]);
+// --------- Cache keys
+const cacheKey = (view) => `csv_${view}`;
+const tsKey    = (view) => `csv_ts_${view}`;
+
+function fmtTime(ts) {
+  if (!ts) return "";
+  try { return new Date(ts).toLocaleString(); } catch { return ""; }
+}
+
+function setStatus(msg) {
+  if (!elLastUpdated) return;
+  elLastUpdated.textContent = msg;
+}
+
+// --------- Load view data (from cache first, then refresh if needed)
+async function loadFromCache(view) {
+  const cachedText = await idbGet(cacheKey(view));
+  if (!cachedText) return false;
+
+  try {
+    state.data[view] = rowsToObjects(parseCSV(cachedText));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function refreshView(view) {
+  const url = CONFIG.CSV_URLS[view];
+  const txt = await fetchCSV(url);
+  await idbSet(cacheKey(view), txt);
+  await idbSet(tsKey(view), Date.now());
   state.data[view] = rowsToObjects(parseCSV(txt));
 }
 
-/* -----------------------------
-   Render
------------------------------- */
+async function ensureLoaded(view) {
+  // 1) try cached (offline safe)
+  const hadCache = await loadFromCache(view);
+
+  // 2) if no cache, try online fetch
+  if (!hadCache) {
+    await refreshView(view);
+    return;
+  }
+
+  // 3) if cache exists, refresh if stale (24h) and online
+  const lastTs = await idbGet(tsKey(view));
+  const stale = !lastTs || (Date.now() - Number(lastTs) > AUTO_REFRESH_MS);
+
+  if (stale && navigator.onLine) {
+    try {
+      await refreshView(view);
+    } catch {
+      // keep cached data
+    }
+  }
+}
+
+// --------- Manual refresh all views
+async function refreshAll() {
+  setStatus("Refreshing data…");
+  const views = ["competition", "training", "xc"];
+
+  // Try to refresh each; if one fails, keep cached
+  for (const v of views) {
+    try {
+      if (navigator.onLine) await refreshView(v);
+    } catch {
+      // ignore
+    }
+  }
+
+  const latest = await getLatestTs();
+  setStatus(latest ? `Last updated: ${fmtTime(latest)}` : `Last updated: ${new Date().toLocaleString()}`);
+
+  render(); // rerender with latest data
+}
+
+async function getLatestTs() {
+  const t1 = Number(await idbGet(tsKey("competition")) || 0);
+  const t2 = Number(await idbGet(tsKey("training")) || 0);
+  const t3 = Number(await idbGet(tsKey("xc")) || 0);
+  return Math.max(t1, t2, t3) || 0;
+}
+
+// --------- UI shell
 function renderShell() {
   const mobile = isMobile();
+
   elContent.innerHTML = `
     <nav>
       <button data-view="competition">Competition</button>
@@ -314,6 +444,13 @@ function renderShell() {
     </nav>
 
     <div class="card">
+      <div class="summaryRow" style="margin-bottom:10px;">
+        <div><b>Records</b></div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button id="refreshBtn" class="smallBtn">Refresh Data</button>
+        </div>
+      </div>
+
       <div class="filters">
         <div>
           <div class="label" id="eventLabel">Event</div>
@@ -366,12 +503,14 @@ function renderShell() {
   `;
 }
 
+// --------- Render main
 function render() {
   const rows = state.data[state.view];
   const cols = colsFor(state.view);
 
   renderShell();
 
+  // Tabs
   document.querySelectorAll("nav button[data-view]").forEach(b => {
     b.classList.toggle("active", b.dataset.view === state.view);
     b.onclick = () => {
@@ -384,9 +523,22 @@ function render() {
     };
   });
 
+  // Refresh button
+  const refreshBtn = document.getElementById("refreshBtn");
+  refreshBtn.onclick = async () => {
+    refreshBtn.disabled = true;
+    try {
+      await refreshAll();
+    } finally {
+      refreshBtn.disabled = false;
+    }
+  };
+
+  // Labels
   const eventLabel = document.getElementById("eventLabel");
   eventLabel.textContent = state.view === "training" ? "Metric" : (state.view === "xc" ? "Distance" : "Event");
 
+  // Events
   const events = uniqueSorted(rows.map(r => r[cols.event]));
   if (!state.event) state.event = events[0] || "";
 
@@ -394,18 +546,21 @@ function render() {
   eventSelect.innerHTML = events.map(e => `<option value="${escapeHtml(e)}">${escapeHtml(e)}</option>`).join("");
   eventSelect.value = state.event;
 
+  // Gender buttons
   const boysBtn = document.getElementById("boysBtn");
   const girlsBtn = document.getElementById("girlsBtn");
   boysBtn.classList.toggle("active", state.gender === "Boys");
   girlsBtn.classList.toggle("active", state.gender === "Girls");
 
+  // Top
   const topSelect = document.getElementById("topSelect");
   topSelect.value = String(state.topN);
 
+  // Search
   const searchInput = document.getElementById("searchInput");
   searchInput.value = state.search;
 
-  // year UI
+  // Year mode
   const yearModeSelect = document.getElementById("yearModeSelect");
   const yearPickWrap = document.getElementById("yearPickWrap");
   const yearPickSelect = document.getElementById("yearPickSelect");
@@ -413,19 +568,19 @@ function render() {
   yearModeSelect.value = state.yearMode;
   yearPickWrap.style.display = state.yearMode === "year" ? "" : "none";
 
-  const years = uniqueSorted(rows.map(r => r[cols.year])).sort((a,b) => b.localeCompare(a));
+  const years = uniqueSorted(rows.map(r => r[cols.year])).sort((a, b) => b.localeCompare(a));
   yearPickSelect.innerHTML =
     [`<option value="ALL">All Years</option>`]
       .concat(years.map(y => `<option value="${escapeHtml(y)}">${escapeHtml(y)}</option>`))
       .join("");
   yearPickSelect.value = state.yearPick;
 
-  // handlers
+  // Handlers
   eventSelect.onchange = (e) => { state.event = e.target.value; renderResults(); };
   topSelect.onchange = (e) => { state.topN = Number(e.target.value); renderResults(); };
   searchInput.oninput = (e) => { state.search = e.target.value; renderResults(); };
 
-  boysBtn.onclick = () => { state.gender = "Boys"; renderResults(); boysBtn.classList.add("active"); girlsBtn.classList.remove("active"); };
+  boysBtn.onclick  = () => { state.gender = "Boys";  renderResults(); boysBtn.classList.add("active"); girlsBtn.classList.remove("active"); };
   girlsBtn.onclick = () => { state.gender = "Girls"; renderResults(); girlsBtn.classList.add("active"); boysBtn.classList.remove("active"); };
 
   yearModeSelect.onchange = (e) => {
@@ -435,10 +590,17 @@ function render() {
   };
   yearPickSelect.onchange = (e) => { state.yearPick = e.target.value; renderResults(); };
 
-  elLastUpdated.textContent = `Loaded ${new Date().toLocaleString()}`;
+  // Last updated text
+  (async () => {
+    const latest = await getLatestTs();
+    if (latest) setStatus(`Last updated: ${fmtTime(latest)}`);
+    else setStatus(`Last updated: ${new Date().toLocaleString()}`);
+  })();
+
   renderResults();
 }
 
+// --------- Render results
 function renderResults() {
   const view = state.view;
   const rows = state.data[view];
@@ -589,16 +751,44 @@ function renderResults() {
   }
 }
 
-/* -----------------------------
-   Boot + PWA
------------------------------- */
+// --------- Boot + PWA
 async function bootApp() {
-  await Promise.all([ensureLoaded("competition"), ensureLoaded("training"), ensureLoaded("xc")]);
+  setStatus("Loading…");
+
+  await Promise.all([
+    ensureLoaded("competition"),
+    ensureLoaded("training"),
+    ensureLoaded("xc")
+  ]);
+
   render();
+
+  // Auto-refresh check at startup (no user action)
+  if (navigator.onLine) {
+    const latest = await getLatestTs();
+    const stale = !latest || (Date.now() - latest > AUTO_REFRESH_MS);
+    if (stale) {
+      // refresh in background, then rerender
+      try {
+        await refreshAll();
+      } catch {
+        // ignore, keep cached
+      }
+    }
+  }
 
   window.addEventListener("resize", () => {
     clearTimeout(window.__rr);
     window.__rr = setTimeout(render, 150);
+  });
+
+  // Optional: when coming back online, you can refresh if stale
+  window.addEventListener("online", async () => {
+    const latest = await getLatestTs();
+    const stale = !latest || (Date.now() - latest > AUTO_REFRESH_MS);
+    if (stale) {
+      try { await refreshAll(); } catch {}
+    }
   });
 
   if ("serviceWorker" in navigator) {
@@ -606,9 +796,7 @@ async function bootApp() {
   }
 }
 
-/* -----------------------------
-   Start
------------------------------- */
+// --------- Start
 wireGate();
 
 if (isAccessGranted()) {
